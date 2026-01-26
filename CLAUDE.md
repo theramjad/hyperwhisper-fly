@@ -2,13 +2,19 @@
 
 Fly.io-based transcription proxy replacing Cloudflare Workers. Buffers audio in memory (no R2 needed).
 
+## Apps
+
+| App | Purpose | Fly.io URL |
+|-----|---------|------------|
+| `hyperwhisper-transcribe` | Production | `https://hyperwhisper-transcribe.fly.dev` |
+| `hyperwhisper-transcribe-dev` | Development | `https://hyperwhisper-transcribe-dev.fly.dev` |
+
 ## Custom Domains
 
-| Environment | URL |
-|-------------|-----|
-| Development | `https://transcribe-dev-v2.hyperwhisper.com` |
-| Production | `https://transcribe-prod-v2.hyperwhisper.com` |
-| Fly.io Default | `https://hyperwhisper-transcribe.fly.dev` |
+| Environment | URL | App |
+|-------------|-----|-----|
+| Development | `https://transcribe-dev-v2.hyperwhisper.com` | `hyperwhisper-transcribe-dev` |
+| Production | `https://transcribe-prod-v2.hyperwhisper.com` | `hyperwhisper-transcribe` |
 
 ## Endpoints
 
@@ -19,28 +25,37 @@ Fly.io-based transcription proxy replacing Cloudflare Workers. Buffers audio in 
 
 ## Deployment
 
-### Deploy Changes
+### Deploy to Production
 
 ```bash
 cd /Users/ray/Desktop/hyperwhisper/hyperwhisper-fly
-fly deploy
+fly deploy --config fly.prod.toml
+```
+
+### Deploy to Development
+
+```bash
+cd /Users/ray/Desktop/hyperwhisper/hyperwhisper-fly
+fly deploy --config fly.dev.toml
 ```
 
 ### View Logs
 
 ```bash
-fly logs
+fly logs -a hyperwhisper-transcribe      # Production
+fly logs -a hyperwhisper-transcribe-dev  # Development
 ```
 
 ### Check Status
 
 ```bash
-fly status
+fly status -a hyperwhisper-transcribe      # Production
+fly status -a hyperwhisper-transcribe-dev  # Development
 ```
 
-## Multi-Region Scaling
+## Multi-Region Scaling (Production Only)
 
-Currently deployed to 8 global regions:
+Production (`hyperwhisper-transcribe`) is deployed to 8 global regions. Development (`hyperwhisper-transcribe-dev`) runs in a single region (Tokyo/nrt).
 
 | Region | Location |
 |--------|----------|
@@ -53,43 +68,48 @@ Currently deployed to 8 global regions:
 | `syd` | Sydney |
 | `gru` | São Paulo |
 
-### Add a New Region
+### Add a New Region (Production)
 
 Clone an existing machine to a new region:
 
 ```bash
-fly machine clone <MACHINE_ID> --region <REGION_CODE>
+fly machine clone <MACHINE_ID> --region <REGION_CODE> -a hyperwhisper-transcribe
 ```
 
 Example:
 ```bash
-fly machine clone 78175e4c19e448 --region bom  # Mumbai
+fly machine clone 78175e4c19e448 --region bom -a hyperwhisper-transcribe  # Mumbai
 ```
 
 ### List Machines
 
 ```bash
-fly machine list
+fly machine list -a hyperwhisper-transcribe      # Production
+fly machine list -a hyperwhisper-transcribe-dev  # Development
 ```
 
 ### Remove a Region
 
 ```bash
-fly machine destroy <MACHINE_ID>
+fly machine destroy <MACHINE_ID> -a hyperwhisper-transcribe
 ```
 
 ## Secrets Management
 
+Both apps require the same secrets. Manage them separately for each app.
+
 ### List Secrets
 
 ```bash
-fly secrets list
+fly secrets list -a hyperwhisper-transcribe      # Production
+fly secrets list -a hyperwhisper-transcribe-dev  # Development
 ```
 
 ### Set Secrets
 
 ```bash
-fly secrets set KEY=value
+fly secrets set KEY=value -a hyperwhisper-transcribe      # Production
+fly secrets set KEY=value -a hyperwhisper-transcribe-dev  # Development
 ```
 
 ### Required Secrets
@@ -107,7 +127,8 @@ fly secrets set KEY=value
 ### Rotate a Secret
 
 ```bash
-fly secrets set DEEPGRAM_API_KEY=new_key_here
+fly secrets set DEEPGRAM_API_KEY=new_key_here -a hyperwhisper-transcribe      # Production
+fly secrets set DEEPGRAM_API_KEY=new_key_here -a hyperwhisper-transcribe-dev  # Development
 ```
 
 ## Upstash Redis
@@ -123,19 +144,22 @@ Dashboard: https://console.upstash.com
 
 ### Dashboard
 
-https://fly.io/apps/hyperwhisper-transcribe/monitoring
+- Production: https://fly.io/apps/hyperwhisper-transcribe/monitoring
+- Development: https://fly.io/apps/hyperwhisper-transcribe-dev/monitoring
 
 ### Tail Logs
 
 ```bash
-fly logs --region sjc  # Specific region
-fly logs               # All regions
+fly logs -a hyperwhisper-transcribe --region sjc  # Production, specific region
+fly logs -a hyperwhisper-transcribe               # Production, all regions
+fly logs -a hyperwhisper-transcribe-dev           # Development
 ```
 
-### Test Health by Region
+### Test Health
 
 ```bash
-curl https://hyperwhisper-transcribe.fly.dev/health
+curl https://transcribe-prod-v2.hyperwhisper.com/health  # Production
+curl https://transcribe-dev-v2.hyperwhisper.com/health   # Development
 ```
 
 ## STT Providers

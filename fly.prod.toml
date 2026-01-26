@@ -1,6 +1,6 @@
-# fly.toml app configuration file generated for hyperwhisper-transcribe on 2026-01-26T13:53:37+08:00
+# fly.prod.toml - Production app configuration
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+# Deploy with: fly deploy --config fly.prod.toml
 #
 
 app = 'hyperwhisper-transcribe'
