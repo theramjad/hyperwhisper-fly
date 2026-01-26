@@ -75,12 +75,14 @@ function validateStreamingHeaders(c: Context):
 
 export async function transcribeRoute(c: Context) {
   const requestId = generateRequestId();
+  const startTime = performance.now();
   const clientIP = getClientIP(c);
 
   // IP block check
   if (await isIPBlocked(clientIP)) {
     return errorResponse(403, 'Access denied', 'Your IP has been temporarily blocked due to abuse');
   }
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms IP check`);
 
   const headerValidation = validateStreamingHeaders(c);
   if (!headerValidation.ok) {
@@ -97,12 +99,14 @@ export async function transcribeRoute(c: Context) {
   if (!authResult.ok) {
     return authResult.response;
   }
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms auth`);
 
   const estimatedCredits = estimateCreditsFromSize(contentLength);
   const creditCheck = await validateCredits(authResult.value, estimatedCredits, clientIP);
   if (!creditCheck.ok) {
     return creditCheck.response;
   }
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms credits`);
 
   const provider = extractProvider(c);
   const language = c.req.query('language') || undefined;
@@ -110,6 +114,7 @@ export async function transcribeRoute(c: Context) {
   const mode = c.req.query('mode') || undefined;
 
   const audioBuffer = await c.req.arrayBuffer();
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms buffer read`);
   console.log(`Transcribe request: provider=${provider}, size=${audioBuffer.byteLength}, type=${contentType}`);
 
   let result: TranscriptionResult;
@@ -137,6 +142,7 @@ export async function transcribeRoute(c: Context) {
     console.error('Transcription failed:', error);
     return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { requestId });
   }
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms STT complete`);
 
   const providerName = fallbackFrom
     ? `${PROVIDER_NAMES['deepgram']} (fallback from ${fallbackFrom})`
@@ -181,5 +187,6 @@ export async function transcribeRoute(c: Context) {
   c.header('X-Total-Cost-Usd', formatUsd(result.costUsd));
   c.header('X-Credits-Used', creditsUsed.toFixed(1));
 
+  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms total`);
   return c.json(response);
 }

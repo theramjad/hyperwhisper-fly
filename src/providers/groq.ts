@@ -37,6 +37,7 @@ export async function transcribeWithGroq(
   language?: string,
   initialPrompt?: string
 ): Promise<TranscriptionResult> {
+  const startTime = performance.now();
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error('GROQ_API_KEY not configured');
@@ -56,6 +57,7 @@ export async function transcribeWithGroq(
     formData.append('prompt', initialPrompt);
   }
 
+  const formDataMs = performance.now() - startTime;
   console.log(`Groq request: ${audio.byteLength} bytes, language=${language || 'auto'}`);
 
   const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -65,6 +67,7 @@ export async function transcribeWithGroq(
     },
     body: formData,
   });
+  const fetchMs = performance.now() - startTime;
 
   // Handle 403 Forbidden - Groq sometimes blocks edge regions
   if (response.status === 403) {
@@ -106,7 +109,7 @@ export async function transcribeWithGroq(
     };
   }
 
-  console.log(`Groq success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language}`);
+  console.log(`Groq success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language}, formData=${formDataMs.toFixed(0)}ms, fetch=${fetchMs.toFixed(0)}ms`);
 
   return {
     text: transcript,
