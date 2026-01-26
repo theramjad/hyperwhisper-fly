@@ -4,17 +4,22 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { websocket } from 'hono/bun';
 import { transcribeRoute } from './routes/transcribe';
-import { authMiddleware } from './middleware/auth';
-import { rateLimitMiddleware } from './middleware/rate-limit';
+import { postProcessRoute } from './routes/post-process';
+import { usageRoute } from './routes/usage';
+import { wsStreamingPreflight, wsStreamingRoute } from './routes/ws-streaming-deepgram';
 
 const app = new Hono();
 
-// CORS - allow requests from HyperWhisper clients
+// CORS - align with Cloudflare (Content-Type only)
 app.use('*', cors({
   origin: '*',
-  allowHeaders: ['Content-Type', 'X-STT-Provider', 'X-Device-ID', 'X-License-Key'],
+  allowHeaders: ['Content-Type'],
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
 }));
+
+app.options('*', (c) => c.body(null, 204));
 
 // Health check endpoint - Fly.io uses this for health monitoring
 app.get('/health', (c) => {
@@ -26,19 +31,20 @@ app.get('/health', (c) => {
 });
 
 // Main transcription endpoint
-// Middleware order: rate-limit → auth → transcribe
-app.post('/transcribe',
-  rateLimitMiddleware,
-  authMiddleware,
-  transcribeRoute
-);
+app.post('/transcribe', transcribeRoute);
 
-// 404 fallback
+// Standalone post-processing endpoint
+app.post('/post-process', postProcessRoute);
+
+// Usage endpoint
+app.get('/usage', usageRoute);
+
+// WebSocket streaming endpoint
+app.get('/ws/streaming-deepgram', wsStreamingPreflight, wsStreamingRoute);
+
+// Fallback - match Cloudflare (405, plain text)
 app.notFound((c) => {
-  return c.json({
-    error: 'Not found',
-    hint: 'Valid endpoints: POST /transcribe, GET /health',
-  }, 404);
+  return c.text('Method not allowed', 405);
 });
 
 // Error handler
@@ -54,6 +60,7 @@ app.onError((err, c) => {
 export default {
   port: Number(process.env.PORT) || 8080,
   fetch: app.fetch,
+  websocket,
 };
 
 console.log(`HyperWhisper Fly.io service starting on port ${process.env.PORT || 8080}`);

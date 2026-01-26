@@ -1,10 +1,8 @@
 // GROQ WHISPER PROVIDER
 // Fastest and cheapest STT - $0.00185/min using whisper-large-v3
 
-import type { TranscriptionResult } from './deepgram';
-
-// Groq Whisper pricing: $0.00185 per minute
-const GROQ_COST_PER_MINUTE = 0.00185;
+import { computeGroqTranscriptionCost } from '../lib/cost-calculator';
+import type { TranscriptionResult } from './types';
 
 /**
  * Custom error for Groq edge blocking (403 Forbidden)
@@ -95,12 +93,26 @@ export async function transcribeWithGroq(
 
   const duration = data.duration || 0;
 
-  console.log(`Groq success: ${(data.text || '').length} chars, ${duration.toFixed(2)}s, lang=${data.language}`);
+  const transcript = data.text || '';
+
+  if (!transcript || transcript.trim().length === 0) {
+    console.log('Groq returned no speech');
+    return {
+      text: '',
+      language: data.language,
+      durationSeconds: 0,
+      costUsd: 0,
+      source: 'no_speech',
+    };
+  }
+
+  console.log(`Groq success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language}`);
 
   return {
-    text: data.text || '',
+    text: transcript,
     language: data.language,
     durationSeconds: duration,
-    costUsd: (duration / 60) * GROQ_COST_PER_MINUTE,
+    costUsd: computeGroqTranscriptionCost(duration),
+    source: 'groq',
   };
 }

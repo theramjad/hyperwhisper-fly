@@ -1,10 +1,8 @@
 // ELEVENLABS SCRIBE PROVIDER
 // High accuracy STT - $0.00983/min using Scribe v2
 
-import type { TranscriptionResult } from './deepgram';
-
-// ElevenLabs Scribe pricing: $0.00983 per minute
-const ELEVENLABS_COST_PER_MINUTE = 0.00983;
+import { computeElevenLabsTranscriptionCost } from '../lib/cost-calculator';
+import type { TranscriptionResult } from './types';
 
 /**
  * Transcribe audio with ElevenLabs Scribe v2
@@ -30,7 +28,7 @@ export async function transcribeWithElevenLabs(
 
   const formData = new FormData();
   formData.append('file', new Blob([audio], { type: contentType }), `audio.${ext}`);
-  formData.append('model_id', 'scribe_v1');
+  formData.append('model_id', 'scribe_v2');
 
   // ElevenLabs uses different language code format
   if (language && language.toLowerCase() !== 'auto') {
@@ -75,12 +73,26 @@ export async function transcribeWithElevenLabs(
     duration = lastWord.end;
   }
 
-  console.log(`ElevenLabs success: ${(data.text || '').length} chars, ${duration.toFixed(2)}s, lang=${data.language_code}`);
+  const transcript = data.text || '';
+
+  if (!transcript || transcript.trim().length === 0) {
+    console.log('ElevenLabs returned no speech');
+    return {
+      text: '',
+      language: data.language_code,
+      durationSeconds: 0,
+      costUsd: 0,
+      source: 'no_speech',
+    };
+  }
+
+  console.log(`ElevenLabs success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language_code}`);
 
   return {
-    text: data.text || '',
+    text: transcript,
     language: data.language_code,
     durationSeconds: duration,
-    costUsd: (duration / 60) * ELEVENLABS_COST_PER_MINUTE,
+    costUsd: computeElevenLabsTranscriptionCost(duration),
+    source: 'elevenlabs',
   };
 }

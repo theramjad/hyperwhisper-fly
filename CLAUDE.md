@@ -22,6 +22,9 @@ Fly.io-based transcription proxy replacing Cloudflare Workers. Buffers audio in 
 |----------|--------|-------------|
 | `/health` | GET | Health check (returns region) |
 | `/transcribe` | POST | Audio transcription |
+| `/post-process` | POST | Standalone LLM text correction |
+| `/usage` | GET | Query credit balance + rate limits |
+| `/ws/streaming-deepgram` | GET (WebSocket) | Real-time streaming transcription |
 
 ## Deployment
 
@@ -117,11 +120,11 @@ fly secrets set KEY=value -a hyperwhisper-transcribe-dev  # Development
 | Secret | Description |
 |--------|-------------|
 | `DEEPGRAM_API_KEY` | Deepgram Nova-3 STT |
-| `GROQ_API_KEY` | Groq Whisper STT |
+| `GROQ_API_KEY` | Groq Whisper STT + Groq LLM fallback |
 | `ELEVENLABS_API_KEY` | ElevenLabs Scribe STT |
+| `CEREBRAS_API_KEY` | Cerebras Llama 3.3 70B (post-processing default) |
 | `UPSTASH_REDIS_URL` | Upstash Redis URL |
 | `UPSTASH_REDIS_TOKEN` | Upstash Redis token |
-| `POLAR_API_KEY` | Polar license API |
 | `NEXTJS_LICENSE_API_URL` | License validation endpoint |
 
 ### Rotate a Secret
@@ -168,9 +171,26 @@ Selected via `X-STT-Provider` header:
 
 | Provider | Header Value | Cost/min |
 |----------|--------------|----------|
-| Deepgram Nova-3 | `deepgram` (default) | $0.0043 |
+| Deepgram Nova-3 | `deepgram` (default) | $0.0055 |
 | Groq Whisper | `groq` | $0.00185 |
 | ElevenLabs Scribe | `elevenlabs` | $0.00983 |
+
+## LLM Providers
+
+Selected via `X-LLM-Provider` header (for `/post-process`):
+
+| Provider | Header Value | Model | Input | Output |
+|----------|--------------|-------|-------|--------|
+| Cerebras | `cerebras` (default) | llama-3.3-70b | $0.85/1M | $1.20/1M |
+| Groq | `groq` | llama-3.3-70b-versatile | $0.59/1M | $0.79/1M |
+
+## Response Headers
+
+- `X-Request-ID`: Unique request identifier
+- `X-Total-Cost-Usd`: Cost in USD (6 decimal places)
+- `X-Credits-Used`: Credits charged (1 decimal place)
+- `X-STT-Provider`: Friendly STT provider name (e.g., `deepgram-nova3`)
+- `X-LLM-Provider`: LLM provider name (for `/post-process`)
 
 ## Architecture
 

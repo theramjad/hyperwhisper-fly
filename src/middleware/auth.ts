@@ -1,116 +1,115 @@
-// AUTHENTICATION MIDDLEWARE
-// Validates license keys via Next.js API and manages device credits for trial users
+// AUTHENTICATION HELPERS
+// Validates license keys and device trial identifiers
 
-import type { Context, Next } from 'hono';
-import { getDeviceCredits, getCachedLicense, cacheLicense, type CachedLicense } from '../lib/redis';
+import { DEFAULT_API_BASE_URL } from '../lib/constants';
+import { cacheLicense, getCachedLicense, getDeviceBalance } from '../lib/redis';
+import { invalidLicenseResponse, noIdentifierResponse } from '../lib/responses';
 
-// Auth context stored on the request
 export interface AuthContext {
   type: 'licensed' | 'trial';
   identifier: string; // license_key or device_id
-  credits?: number;
+  credits: number;
+  licenseKey?: string;
+  deviceId?: string;
 }
 
-declare module 'hono' {
-  interface ContextVariableMap {
-    auth: AuthContext;
-  }
+export interface AuthInput {
+  licenseKey?: string;
+  deviceId?: string;
 }
 
-// Validate license against Next.js API
-async function validateLicense(licenseKey: string): Promise<CachedLicense> {
-  const apiUrl = process.env.NEXTJS_LICENSE_API_URL || 'https://hyperwhisper.com/api/license/validate';
+export type AuthResult =
+  | { ok: true; value: AuthContext }
+  | { ok: false; response: Response };
+
+async function validateLicenseViaApi(licenseKey: string): Promise<{ isValid: boolean; credits: number }> {
+  const apiBase = (process.env.NEXTJS_LICENSE_API_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
 
   try {
-    const response = await fetch(apiUrl, {
+    const response = await fetch(`${apiBase}/api/license/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.POLAR_API_KEY || ''}`,
       },
-      body: JSON.stringify({ license_key: licenseKey }),
+      body: JSON.stringify({
+        license_key: licenseKey,
+        include_credits: true,
+      }),
     });
 
-    if (!response.ok) {
-      return {
-        valid: false,
-        cachedAt: new Date().toISOString(),
-      };
-    }
+    const data = await response.json().catch(() => ({})) as { valid?: boolean; credits?: number };
+    const isValid = data.valid === true;
+    const credits = typeof data.credits === 'number' ? data.credits : 0;
 
-    const data = await response.json() as { valid: boolean; credits?: number; expiresAt?: string };
-
-    return {
-      valid: data.valid,
-      credits: data.credits,
-      expiresAt: data.expiresAt,
+    await cacheLicense(licenseKey, {
+      isValid,
+      credits,
       cachedAt: new Date().toISOString(),
-    };
+    });
+
+    return { isValid, credits };
   } catch (error) {
     console.error('License validation failed:', error);
-    return {
-      valid: false,
+    await cacheLicense(licenseKey, {
+      isValid: false,
+      credits: 0,
       cachedAt: new Date().toISOString(),
-    };
+    });
+    return { isValid: false, credits: 0 };
   }
 }
 
-export async function authMiddleware(c: Context, next: Next) {
-  const licenseKey = c.req.header('X-License-Key') || c.req.query('license_key');
-  const deviceId = c.req.header('X-Device-ID') || c.req.query('device_id');
+export async function validateAuth(input: AuthInput, forceRefresh = false): Promise<AuthResult> {
+  const { licenseKey, deviceId } = input;
 
-  // Licensed user flow
+  if (!licenseKey && !deviceId) {
+    return { ok: false, response: noIdentifierResponse() };
+  }
+
   if (licenseKey) {
-    // Check cache first
-    let license = await getCachedLicense(licenseKey);
-
-    if (!license) {
-      // Validate against API
-      license = await validateLicense(licenseKey);
-      // Cache the result
-      await cacheLicense(licenseKey, license);
+    if (!forceRefresh) {
+      const cached = await getCachedLicense(licenseKey);
+      if (cached) {
+        if (!cached.isValid) {
+          return { ok: false, response: invalidLicenseResponse() };
+        }
+        return {
+          ok: true,
+          value: {
+            type: 'licensed',
+            identifier: licenseKey,
+            credits: cached.credits,
+            licenseKey,
+          },
+        };
+      }
     }
 
-    if (!license.valid) {
-      return c.json({
-        error: 'Invalid license',
-        message: 'License key is invalid or expired.',
-      }, 401);
+    const validation = await validateLicenseViaApi(licenseKey);
+    if (!validation.isValid) {
+      return { ok: false, response: invalidLicenseResponse() };
     }
 
-    c.set('auth', {
-      type: 'licensed',
-      identifier: licenseKey,
-      credits: license.credits,
-    });
-
-    return next();
+    return {
+      ok: true,
+      value: {
+        type: 'licensed',
+        identifier: licenseKey,
+        credits: validation.credits,
+        licenseKey,
+      },
+    };
   }
 
-  // Trial user flow (device_id)
-  if (deviceId) {
-    const credits = await getDeviceCredits(deviceId);
-
-    if (credits <= 0) {
-      return c.json({
-        error: 'Insufficient credits',
-        message: 'Trial credits exhausted. Please purchase a license.',
-        credits: 0,
-      }, 402);
-    }
-
-    c.set('auth', {
+  // Trial user
+  const deviceBalance = await getDeviceBalance(deviceId!);
+  return {
+    ok: true,
+    value: {
       type: 'trial',
-      identifier: deviceId,
-      credits,
-    });
-
-    return next();
-  }
-
-  // No authentication provided
-  return c.json({
-    error: 'Authentication required',
-    message: 'Provide X-License-Key header or device_id query parameter.',
-  }, 401);
+      identifier: deviceId!,
+      credits: deviceBalance.creditsRemaining,
+      deviceId: deviceId!,
+    },
+  };
 }

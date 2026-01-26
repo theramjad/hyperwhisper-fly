@@ -1,15 +1,8 @@
 // DEEPGRAM NOVA-3 PROVIDER
-// Primary STT provider - $0.0043/min, best accuracy with vocabulary boosting
+// Primary STT provider - $0.0055/min, best accuracy with vocabulary boosting
 
-export interface TranscriptionResult {
-  text: string;
-  language?: string;
-  durationSeconds: number;
-  costUsd: number;
-}
-
-// Deepgram Nova-3 pricing: $0.0043 per minute
-const DEEPGRAM_COST_PER_MINUTE = 0.0043;
+import { computeDeepgramTranscriptionCost } from '../lib/cost-calculator';
+import type { TranscriptionResult } from './types';
 
 // Maximum keywords Deepgram accepts
 const MAX_KEYWORDS = 100;
@@ -117,12 +110,26 @@ export async function transcribeWithDeepgram(
   const transcript = channel?.alternatives?.[0]?.transcript || '';
   const duration = data.metadata?.duration || 0;
 
+  if (!transcript || transcript.trim().length === 0) {
+    console.log('Deepgram returned no speech');
+    return {
+      text: '',
+      language: channel?.detected_language,
+      durationSeconds: 0,
+      costUsd: 0,
+      source: 'no_speech',
+      requestId: data.metadata?.request_id,
+    };
+  }
+
   console.log(`Deepgram success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${channel?.detected_language}`);
 
   return {
     text: transcript,
     language: channel?.detected_language,
     durationSeconds: duration,
-    costUsd: (duration / 60) * DEEPGRAM_COST_PER_MINUTE,
+    costUsd: computeDeepgramTranscriptionCost(duration),
+    source: 'deepgram',
+    requestId: data.metadata?.request_id,
   };
 }
