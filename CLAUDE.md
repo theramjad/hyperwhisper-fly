@@ -1,6 +1,14 @@
-# HyperWhisper Fly.io Transcription Service
+# HyperWhisper Fly.io Transcription Service (v2)
 
 Fly.io-based transcription proxy replacing Cloudflare Workers. Buffers audio in memory (no R2 needed).
+
+## Custom Domains
+
+| Environment | URL |
+|-------------|-----|
+| Development | `https://transcribe-dev-v2.hyperwhisper.com` |
+| Production | `https://transcribe-prod-v2.hyperwhisper.com` |
+| Fly.io Default | `https://hyperwhisper-transcribe.fly.dev` |
 
 ## Endpoints
 
