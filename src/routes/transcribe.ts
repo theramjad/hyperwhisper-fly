@@ -135,7 +135,7 @@ export async function transcribeRoute(c: Context) {
     }
   } catch (error) {
     console.error('Transcription failed:', error);
-    return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { request_id: requestId });
+    return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { requestId });
   }
 
   const providerName = fallbackFrom

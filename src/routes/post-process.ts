@@ -94,7 +94,7 @@ export async function postProcessRoute(c: Context) {
       const fallbackRetries = providerUsed === 'groq' ? 3 : 0;
       llmResponse = await callWithRetry(providerUsed, payload, requestId, fallbackRetries);
     } else {
-      return errorResponse(500, 'Post-processing failed', error instanceof Error ? error.message : String(error));
+      return errorResponse(500, 'Post-processing failed', error instanceof Error ? error.message : String(error), { requestId });
     }
   }
 

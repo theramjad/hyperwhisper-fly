@@ -1,7 +1,7 @@
 // COST CALCULATION MODULE
 // Handles pricing calculations for STT providers and LLM post-processing
 
-import { roundToTenth, roundUpToTenth } from './utils';
+import { roundUpToTenth } from './utils';
 
 // =============================================================================
 // PRICING CONSTANTS
@@ -94,7 +94,7 @@ export function isGroqUsage(value: unknown): value is GroqUsage {
 
 export function usdToCredits(usd: number): number {
   if (!Number.isFinite(usd) || usd <= 0) {
-    return 0;
+    return 0.1;
   }
 
   if (USD_PER_CREDIT <= 0) {
@@ -106,11 +106,11 @@ export function usdToCredits(usd: number): number {
 
 export function creditsForCost(costUsd: number): number {
   if (!Number.isFinite(costUsd) || costUsd <= 0) {
-    return 0;
+    return 0.1;
   }
 
   const rawCredits = usdToCredits(costUsd);
-  return Math.max(0.1, roundToTenth(rawCredits));
+  return Math.max(0.1, roundUpToTenth(rawCredits));
 }
 
 export function estimateCreditsForCost(costUsd: number): number {
