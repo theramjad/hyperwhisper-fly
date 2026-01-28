@@ -1,5 +1,5 @@
 {
-  "name": "hyperwhisper-fly",
+  "name": "backend-v2-flyio",
   "version": "1.0.0",
   "description": "Fly.io transcription proxy for HyperWhisper",
   "type": "module",

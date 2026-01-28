@@ -31,14 +31,14 @@ Fly.io-based transcription proxy replacing Cloudflare Workers. Buffers audio in 
 ### Deploy to Production
 
 ```bash
-cd /Users/ray/Desktop/hyperwhisper/hyperwhisper-fly
+cd /Users/ray/Desktop/hyperwhisper/backend-v2-flyio
 fly deploy --config fly.prod.toml
 ```
 
 ### Deploy to Development
 
 ```bash
-cd /Users/ray/Desktop/hyperwhisper/hyperwhisper-fly
+cd /Users/ray/Desktop/hyperwhisper/backend-v2-flyio
 fly deploy --config fly.dev.toml
 ```
 
