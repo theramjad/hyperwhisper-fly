@@ -65,3 +65,5 @@ export default {
 
 console.log(`HyperWhisper Fly.io service starting on port ${process.env.PORT || 8080}`);
 console.log(`Region: ${process.env.FLY_REGION || 'local'}`);
+console.log(`License API: ${process.env.NEXTJS_LICENSE_API_URL || 'https://www.hyperwhisper.com (default)'}`);
+console.log('Started server: http://localhost:' + (process.env.PORT || 8080));

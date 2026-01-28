@@ -22,11 +22,21 @@ export type AuthResult =
   | { ok: true; value: AuthContext }
   | { ok: false; response: Response };
 
+// Mask license key for logging (show first 4 and last 4 chars)
+function maskLicenseKey(key: string): string {
+  if (key.length <= 8) return '****';
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
 async function validateLicenseViaApi(licenseKey: string): Promise<{ isValid: boolean; credits: number }> {
   const apiBase = (process.env.NEXTJS_LICENSE_API_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+  const validateUrl = `${apiBase}/api/license/validate`;
+  const maskedKey = maskLicenseKey(licenseKey);
+
+  console.log(`[License] Validating ${maskedKey} via ${validateUrl}`);
 
   try {
-    const response = await fetch(`${apiBase}/api/license/validate`, {
+    const response = await fetch(validateUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -37,9 +47,19 @@ async function validateLicenseViaApi(licenseKey: string): Promise<{ isValid: boo
       }),
     });
 
-    const data = await response.json().catch(() => ({})) as { valid?: boolean; credits?: number };
+    const responseText = await response.text();
+    let data: { valid?: boolean; credits?: number; error?: string } = {};
+
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error(`[License] Invalid JSON response for ${maskedKey}: ${responseText.slice(0, 200)}`);
+    }
+
     const isValid = data.valid === true;
     const credits = typeof data.credits === 'number' ? data.credits : 0;
+
+    console.log(`[License] ${maskedKey}: status=${response.status}, valid=${isValid}, credits=${credits}${data.error ? `, error=${data.error}` : ''}`);
 
     await cacheLicense(licenseKey, {
       isValid,
@@ -49,7 +69,7 @@ async function validateLicenseViaApi(licenseKey: string): Promise<{ isValid: boo
 
     return { isValid, credits };
   } catch (error) {
-    console.error('License validation failed:', error);
+    console.error(`[License] Validation failed for ${maskedKey}:`, error);
     await cacheLicense(licenseKey, {
       isValid: false,
       credits: 0,
@@ -63,13 +83,17 @@ export async function validateAuth(input: AuthInput, forceRefresh = false): Prom
   const { licenseKey, deviceId } = input;
 
   if (!licenseKey && !deviceId) {
+    console.log('[Auth] No license_key or device_id provided');
     return { ok: false, response: noIdentifierResponse() };
   }
 
   if (licenseKey) {
+    const maskedKey = maskLicenseKey(licenseKey);
+
     if (!forceRefresh) {
       const cached = await getCachedLicense(licenseKey);
       if (cached) {
+        console.log(`[Auth] Cache HIT for ${maskedKey}: valid=${cached.isValid}, credits=${cached.credits}, cachedAt=${cached.cachedAt}`);
         if (!cached.isValid) {
           return { ok: false, response: invalidLicenseResponse() };
         }
@@ -83,13 +107,18 @@ export async function validateAuth(input: AuthInput, forceRefresh = false): Prom
           },
         };
       }
+      console.log(`[Auth] Cache MISS for ${maskedKey}, calling API...`);
+    } else {
+      console.log(`[Auth] Force refresh for ${maskedKey}, bypassing cache...`);
     }
 
     const validation = await validateLicenseViaApi(licenseKey);
     if (!validation.isValid) {
+      console.log(`[Auth] License ${maskedKey} is INVALID`);
       return { ok: false, response: invalidLicenseResponse() };
     }
 
+    console.log(`[Auth] License ${maskedKey} is VALID with ${validation.credits} credits`);
     return {
       ok: true,
       value: {
@@ -102,7 +131,9 @@ export async function validateAuth(input: AuthInput, forceRefresh = false): Prom
   }
 
   // Trial user
+  console.log(`[Auth] Trial user with device_id: ${deviceId!.slice(0, 8)}...`);
   const deviceBalance = await getDeviceBalance(deviceId!);
+  console.log(`[Auth] Trial device has ${deviceBalance.creditsRemaining} credits remaining`);
   return {
     ok: true,
     value: {

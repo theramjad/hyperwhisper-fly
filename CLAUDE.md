@@ -58,18 +58,29 @@ fly status -a hyperwhisper-transcribe-dev  # Development
 
 ## Multi-Region Scaling (Production Only)
 
-Production (`hyperwhisper-transcribe`) is deployed to 8 global regions. Development (`hyperwhisper-transcribe-dev`) runs in a single region (Tokyo/nrt).
+Production (`hyperwhisper-transcribe`) is deployed to all 17 available Fly.io regions for global coverage. Development (`hyperwhisper-transcribe-dev`) runs in a single region (Tokyo/nrt).
 
 | Region | Location |
 |--------|----------|
-| `sjc` | San Jose (US West) |
-| `iad` | Virginia (US East) |
-| `lhr` | London |
+| `ams` | Amsterdam |
+| `arn` | Stockholm |
+| `cdg` | Paris |
+| `dfw` | Dallas |
+| `ewr` | Secaucus, NJ (US East) |
 | `fra` | Frankfurt |
-| `nrt` | Tokyo |
-| `sin` | Singapore |
-| `syd` | Sydney |
 | `gru` | São Paulo |
+| `iad` | Virginia (US East) |
+| `jnb` | Johannesburg |
+| `lax` | Los Angeles |
+| `lhr` | London |
+| `nrt` | Tokyo |
+| `ord` | Chicago |
+| `sin` | Singapore |
+| `sjc` | San Jose (US West) |
+| `syd` | Sydney |
+| `yyz` | Toronto |
+
+> **Note:** Mumbai (bom) requires a paid Fly.io plan upgrade and is not currently deployed.
 
 ### Add a New Region (Production)
 
@@ -205,6 +216,6 @@ Client → Fly.io Anycast → Nearest Region → STT Provider → Response
 
 | Component | Monthly |
 |-----------|---------|
-| 8x Fly machines (1GB, suspended when idle) | ~$15-30 |
+| 17x Fly machines (1GB, suspended when idle) | ~$30-60 |
 | Upstash Redis (Global, free tier) | $0 |
-| **Total** | ~$15-30/mo |
+| **Total** | ~$30-60/mo |
