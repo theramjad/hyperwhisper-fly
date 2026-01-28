@@ -216,6 +216,6 @@ Client → Fly.io Anycast → Nearest Region → STT Provider → Response
 
 | Component | Monthly |
 |-----------|---------|
-| 17x Fly machines (1GB, suspended when idle) | ~$30-60 |
+| 17x Fly machines (1GB, always running) | ~$85-100 |
 | Upstash Redis (Global, free tier) | $0 |
-| **Total** | ~$30-60/mo |
+| **Total** | ~$85-100/mo |
