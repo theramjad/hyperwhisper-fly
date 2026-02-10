@@ -4,7 +4,7 @@
 import type { Context } from 'hono';
 import { extractLLMProvider, LLM_PROVIDER_NAMES, callWithRetry, shouldFallback, type LLMProvider } from '../lib/llm-provider';
 import { generateRequestId } from '../lib/request-id';
-import { buildTranscriptUserContent, extractCorrectedText, stripCleanMarkers } from '../lib/text-processing';
+import { buildTranscriptUserContent, containsPromptLeakage, extractCorrectedText, stripCleanMarkers } from '../lib/text-processing';
 import { buildCorrectionRequest } from '../providers/groq-llm';
 import { creditsForCost, formatUsd } from '../lib/cost-calculator';
 import { isIPBlocked } from '../lib/redis';
@@ -98,8 +98,35 @@ export async function postProcessRoute(c: Context) {
     }
   }
 
-  const correctedText = stripCleanMarkers(extractCorrectedText(llmResponse.raw));
-  const costUsd = llmResponse.costUsd;
+  let correctedText = stripCleanMarkers(extractCorrectedText(llmResponse.raw));
+  let costUsd = llmResponse.costUsd;
+
+  if (containsPromptLeakage(correctedText)) {
+    console.warn(`[${requestId}] Prompt leakage detected from ${providerUsed} (input=${text.length}, output=${correctedText.length}), retrying with alternate provider`);
+
+    const alternateProvider: LLMProvider = providerUsed === 'cerebras' ? 'groq' : 'cerebras';
+    const alternateRetries = alternateProvider === 'groq' ? 3 : 0;
+
+    try {
+      const retryResponse = await callWithRetry(alternateProvider, payload, requestId, alternateRetries);
+      const retryText = stripCleanMarkers(extractCorrectedText(retryResponse.raw));
+
+      if (containsPromptLeakage(retryText)) {
+        console.warn(`[${requestId}] Prompt leakage persists from ${alternateProvider}, falling back to raw text`);
+        correctedText = text;
+        providerUsed = alternateProvider;
+        costUsd += retryResponse.costUsd;
+      } else {
+        correctedText = retryText;
+        providerUsed = alternateProvider;
+        costUsd += retryResponse.costUsd;
+      }
+    } catch (retryError) {
+      console.warn(`[${requestId}] Alternate provider ${alternateProvider} failed after leakage, falling back to raw text:`, retryError);
+      correctedText = text;
+    }
+  }
+
   const creditsUsed = creditsForCost(costUsd);
 
   deductCredits(

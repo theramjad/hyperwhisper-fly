@@ -128,6 +128,23 @@ export function buildTranscriptUserContent(text: string): string {
 
 const CLEAN_MARKER_PATTERN = /<<CLEANED>>|<<CLEANED>|<CLEANED>>|<CLEANED>|<<END>>|<<END>|<END>>|<END>/gi;
 
+const PROMPT_LEAKAGE_MARKERS = [
+  '--TRANSCRIPT--',
+  '--ENDTRANSCRIPT--',
+  '<INSTRUCTIONS>',
+  '<USER_SYSTEM_PROMPT>',
+  '<APPLICATION_CONTEXT>',
+  '<CUSTOM_VOCABULARY>',
+];
+
+/**
+ * Detect if LLM response contains echoed prompt content instead of corrected text.
+ * Under load, LLMs can return 200 OK with the raw prompt leaked back.
+ */
+export function containsPromptLeakage(text: string): boolean {
+  return PROMPT_LEAKAGE_MARKERS.some(marker => text.includes(marker));
+}
+
 /**
  * Remove <<CLEANED>> / <<END>> markers left by Groq post-processing prompts
  */
