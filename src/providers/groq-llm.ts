@@ -4,7 +4,7 @@ import { computeGroqChatCost, isGroqUsage, type GroqUsage } from '../lib/cost-ca
 import { isRecord, safeReadText } from '../lib/utils';
 
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-const GROQ_CHAT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_CHAT_MODEL = 'openai/gpt-oss-120b';
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -37,6 +37,7 @@ export async function requestGroqChat(
     body: JSON.stringify({
       model: GROQ_CHAT_MODEL,
       ...payload,
+      reasoning_effort: 'low',
       stream: false,
     }),
   });

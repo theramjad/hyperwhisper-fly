@@ -193,7 +193,7 @@ Selected via `X-LLM-Provider` header (for `/post-process`):
 | Provider | Header Value | Model | Input | Output |
 |----------|--------------|-------|-------|--------|
 | Cerebras | `cerebras` (default) | gpt-oss-120b | $0.35/1M | $0.75/1M |
-| Groq | `groq` | llama-3.3-70b-versatile | $0.59/1M | $0.79/1M |
+| Groq | `groq` | openai/gpt-oss-120b | $0.15/1M | $0.60/1M |
 
 ## Response Headers
 
