@@ -10,7 +10,7 @@ export type LLMProvider = 'cerebras' | 'groq';
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'cerebras';
 
 export const LLM_PROVIDER_NAMES: Record<LLMProvider, string> = {
-  cerebras: 'cerebras-llama-3.3-70b',
+  cerebras: 'cerebras-gpt-oss-120b',
   groq: 'groq-llama-3.3-70b-versatile',
 };
 

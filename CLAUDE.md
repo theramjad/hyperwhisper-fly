@@ -133,7 +133,7 @@ fly secrets set KEY=value -a hyperwhisper-transcribe-dev  # Development
 | `DEEPGRAM_API_KEY` | Deepgram Nova-3 STT |
 | `GROQ_API_KEY` | Groq Whisper STT + Groq LLM fallback |
 | `ELEVENLABS_API_KEY` | ElevenLabs Scribe STT |
-| `CEREBRAS_API_KEY` | Cerebras Llama 3.3 70B (post-processing default) |
+| `CEREBRAS_API_KEY` | Cerebras GPT-OSS-120B (post-processing default) |
 | `UPSTASH_REDIS_URL` | Upstash Redis URL |
 | `UPSTASH_REDIS_TOKEN` | Upstash Redis token |
 | `NEXTJS_LICENSE_API_URL` | License validation endpoint |
@@ -192,7 +192,7 @@ Selected via `X-LLM-Provider` header (for `/post-process`):
 
 | Provider | Header Value | Model | Input | Output |
 |----------|--------------|-------|-------|--------|
-| Cerebras | `cerebras` (default) | llama-3.3-70b | $0.85/1M | $1.20/1M |
+| Cerebras | `cerebras` (default) | gpt-oss-120b | $0.35/1M | $0.75/1M |
 | Groq | `groq` | llama-3.3-70b-versatile | $0.59/1M | $0.79/1M |
 
 ## Response Headers

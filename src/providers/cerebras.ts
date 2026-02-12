@@ -5,7 +5,7 @@ import { isRecord, safeReadText } from '../lib/utils';
 import type { CorrectionRequestPayload } from './groq-llm';
 
 const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
-const CEREBRAS_CHAT_MODEL = 'llama-3.3-70b';
+const CEREBRAS_CHAT_MODEL = 'gpt-oss-120b';
 
 export async function requestCerebrasChat(
   payload: CorrectionRequestPayload,
@@ -27,6 +27,7 @@ export async function requestCerebrasChat(
     body: JSON.stringify({
       model: CEREBRAS_CHAT_MODEL,
       ...payload,
+      reasoning_effort: 'low',
       stream: false,
     }),
   });
