@@ -126,7 +126,7 @@ export function buildTranscriptUserContent(text: string): string {
   return `--TRANSCRIPT--\n${text}\n--ENDTRANSCRIPT--`;
 }
 
-const CLEAN_MARKER_PATTERN = /<<CLEANED>>|<<CLEANED>|<CLEANED>>|<CLEANED>|<<END>>|<<END>|<END>>|<END>/gi;
+const CLEAN_MARKER_PATTERN = /<<\/?CLEANED>>|<<CLEANED>|<CLEANED>>|<CLEANED>|<<\/?END>>|<<END>|<END>>|<END>/gi;
 
 const PROMPT_LEAKAGE_MARKERS = [
   '--TRANSCRIPT--',
