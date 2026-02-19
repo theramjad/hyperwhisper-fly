@@ -138,12 +138,18 @@ export const wsStreamingRoute = upgradeWebSocket((c) => {
   let deepgramWs: WebSocket | null = null;
   let sessionEnded = false;
   let clientSocket: WSContext | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
 
   const dgUrl = buildDeepgramUrl(language, vocabulary);
 
   async function endSession(): Promise<void> {
     if (sessionEnded) return;
     sessionEnded = true;
+
+    if (pingInterval) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
 
     const costUsd = computeDeepgramTranscriptionCost(totalDurationSeconds);
     const creditsUsed = creditsForCost(costUsd);
@@ -220,6 +226,13 @@ export const wsStreamingRoute = upgradeWebSocket((c) => {
           ws.close(1000, 'Session ended');
         }
       });
+
+      // Send ping every 30s to prevent Fly.io's 60s idle timeout from killing the connection
+      pingInterval = setInterval(() => {
+        if (clientSocket && clientSocket.readyState === 1) {
+          clientSocket.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000);
     },
     onMessage: (event) => {
       if (!deepgramWs || deepgramWs.readyState !== WebSocket.OPEN) {
@@ -237,6 +250,10 @@ export const wsStreamingRoute = upgradeWebSocket((c) => {
           const msg = JSON.parse(data) as { type?: string };
           if (msg.type === 'stop') {
             deepgramWs.close(1000, 'Client requested stop');
+            return;
+          }
+          if (msg.type === 'pong') {
+            // Client pong response — ignore
             return;
           }
         } catch {
