@@ -29,6 +29,7 @@ export async function transcribeWithElevenLabs(
   const formData = new FormData();
   formData.append('file', new Blob([audio], { type: contentType }), `audio.${ext}`);
   formData.append('model_id', 'scribe_v2');
+  formData.append('tag_audio_events', 'false');
 
   // ElevenLabs uses different language code format
   if (language && language.toLowerCase() !== 'auto') {
