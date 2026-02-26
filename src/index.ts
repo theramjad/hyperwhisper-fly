@@ -7,6 +7,7 @@ import { cors } from 'hono/cors';
 import { websocket } from 'hono/bun';
 import { transcribeRoute } from './routes/transcribe';
 import { postProcessRoute } from './routes/post-process';
+import { assistantRoute } from './routes/assistant';
 import { usageRoute } from './routes/usage';
 import { wsStreamingPreflight, wsStreamingRoute } from './routes/ws-streaming-deepgram';
 
@@ -35,6 +36,9 @@ app.post('/transcribe', transcribeRoute);
 
 // Standalone post-processing endpoint
 app.post('/post-process', postProcessRoute);
+
+// Assistant mode endpoint (vision LLM)
+app.post('/assistant', assistantRoute);
 
 // Usage endpoint
 app.get('/usage', usageRoute);

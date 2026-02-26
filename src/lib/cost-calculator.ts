@@ -18,6 +18,10 @@ const DEEPGRAM_COST_PER_AUDIO_MINUTE = 0.0055;
 const GROQ_WHISPER_COST_PER_AUDIO_HOUR = 0.111; // $0.111/hour
 const GROQ_WHISPER_MIN_BILLABLE_SECONDS = 10;
 
+// Anthropic Claude Haiku 4.5 Pricing (USD)
+const ANTHROPIC_HAIKU_PROMPT_COST_PER_TOKEN = 0.80 / 1_000_000;
+const ANTHROPIC_HAIKU_COMPLETION_COST_PER_TOKEN = 4.00 / 1_000_000;
+
 // Cerebras GPT-OSS-120B Pricing (USD)
 const CEREBRAS_PROMPT_COST_PER_TOKEN = 0.35 / 1_000_000;
 const CEREBRAS_COMPLETION_COST_PER_TOKEN = 0.75 / 1_000_000;
@@ -64,6 +68,12 @@ export function computeGroqTranscriptionCost(durationSeconds: number): number {
 // =============================================================================
 // LLM COSTS
 // =============================================================================
+
+export function computeAnthropicCost(inputTokens: number, outputTokens: number): number {
+  const promptCost = inputTokens * ANTHROPIC_HAIKU_PROMPT_COST_PER_TOKEN;
+  const completionCost = outputTokens * ANTHROPIC_HAIKU_COMPLETION_COST_PER_TOKEN;
+  return roundUsd(promptCost + completionCost);
+}
 
 export function computeCerebrasChatCost(usage: GroqUsage): number {
   const promptCost = usage.prompt_tokens * CEREBRAS_PROMPT_COST_PER_TOKEN;
