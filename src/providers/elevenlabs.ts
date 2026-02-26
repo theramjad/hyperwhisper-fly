@@ -2,14 +2,8 @@
 // High accuracy STT - $0.00983/min using Scribe v2
 
 import { computeElevenLabsTranscriptionCost } from '../lib/cost-calculator';
+import { ProviderUnavailableError } from './types';
 import type { TranscriptionResult } from './types';
-
-export class ElevenLabsRateLimitError extends Error {
-  constructor() {
-    super('ElevenLabs rate limit exceeded');
-    this.name = 'ElevenLabsRateLimitError';
-  }
-}
 
 /**
  * Transcribe audio with ElevenLabs Scribe v2
@@ -61,7 +55,7 @@ export async function transcribeWithElevenLabs(
       throw new Error('ElevenLabs API key is invalid');
     }
     if (response.status === 429) {
-      throw new ElevenLabsRateLimitError();
+      throw new ProviderUnavailableError('ElevenLabs', 'rate limit exceeded');
     }
 
     throw new Error(`ElevenLabs error: ${response.status}`);

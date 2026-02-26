@@ -2,6 +2,7 @@
 // Primary STT provider - $0.0055/min, best accuracy with vocabulary boosting
 
 import { computeDeepgramTranscriptionCost } from '../lib/cost-calculator';
+import { ProviderUnavailableError } from './types';
 import type { TranscriptionResult } from './types';
 
 // Maximum keywords Deepgram accepts
@@ -87,7 +88,7 @@ export async function transcribeWithDeepgram(
       throw new Error('Deepgram account has insufficient funds');
     }
     if (response.status === 429) {
-      throw new Error('Deepgram rate limit exceeded');
+      throw new ProviderUnavailableError('Deepgram', 'rate limit exceeded');
     }
 
     throw new Error(`Deepgram error: ${response.status}`);

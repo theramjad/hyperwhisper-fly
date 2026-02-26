@@ -4,9 +4,10 @@
 
 import type { Context } from 'hono';
 import { transcribeWithDeepgram } from '../providers/deepgram';
-import { transcribeWithGroq, GroqEdgeBlockedError } from '../providers/groq';
-import { transcribeWithElevenLabs, ElevenLabsRateLimitError } from '../providers/elevenlabs';
+import { transcribeWithGroq } from '../providers/groq';
+import { transcribeWithElevenLabs } from '../providers/elevenlabs';
 import type { TranscriptionResult } from '../providers/types';
+import { ProviderUnavailableError } from '../providers/types';
 import { creditsForCost, formatUsd } from '../lib/cost-calculator';
 import { generateRequestId } from '../lib/request-id';
 import { MAX_AUDIO_SIZE_BYTES } from '../lib/constants';
@@ -27,6 +28,20 @@ const PROVIDER_NAMES: Record<Provider, string> = {
   deepgram: 'deepgram-nova3',
   elevenlabs: 'elevenlabs-scribe-v2',
   groq: 'groq-whisper-large-v3',
+};
+
+// Fallback chains: each provider cascades through alternatives
+// ElevenLabs (most expensive) is last resort for the cheaper providers
+const FALLBACK_CHAINS: Record<Provider, Provider[]> = {
+  elevenlabs: ['elevenlabs', 'groq', 'deepgram'],
+  groq: ['groq', 'deepgram', 'elevenlabs'],
+  deepgram: ['deepgram', 'groq', 'elevenlabs'],
+};
+
+const PROVIDER_FN: Record<Provider, (audio: ArrayBuffer, contentType: string, language?: string, initialPrompt?: string) => Promise<TranscriptionResult>> = {
+  deepgram: transcribeWithDeepgram,
+  groq: transcribeWithGroq,
+  elevenlabs: transcribeWithElevenLabs,
 };
 
 function getClientIP(c: Context): string {
@@ -120,43 +135,40 @@ export async function transcribeRoute(c: Context) {
   let result: TranscriptionResult;
   let fallbackFrom: Provider | undefined;
 
-  try {
-    if (provider === 'groq') {
-      try {
-        result = await transcribeWithGroq(audioBuffer, contentType, language, initialPrompt);
-      } catch (error) {
-        if (error instanceof GroqEdgeBlockedError) {
-          console.warn('Groq 403 - falling back to Deepgram');
-          result = await transcribeWithDeepgram(audioBuffer, contentType, language, initialPrompt);
-          fallbackFrom = 'groq';
-        } else {
-          throw error;
-        }
+  const chain = FALLBACK_CHAINS[provider];
+  let lastError: Error | undefined;
+
+  for (const current of chain) {
+    try {
+      result = await PROVIDER_FN[current](audioBuffer, contentType, language, initialPrompt);
+      if (current !== provider) {
+        fallbackFrom = provider;
       }
-    } else if (provider === 'elevenlabs') {
-      try {
-        result = await transcribeWithElevenLabs(audioBuffer, contentType, language, initialPrompt);
-      } catch (error) {
-        if (error instanceof ElevenLabsRateLimitError) {
-          console.warn('ElevenLabs 429 - falling back to Deepgram');
-          result = await transcribeWithDeepgram(audioBuffer, contentType, language, initialPrompt);
-          fallbackFrom = 'elevenlabs';
-        } else {
-          throw error;
-        }
+      break;
+    } catch (error) {
+      if (error instanceof ProviderUnavailableError) {
+        const next = chain[chain.indexOf(current) + 1];
+        console.warn(`${error.message} - ${next ? `falling back to ${next}` : 'no more fallbacks'}`);
+        lastError = error;
+        continue;
       }
-    } else {
-      result = await transcribeWithDeepgram(audioBuffer, contentType, language, initialPrompt);
+      // Non-retryable error (401 invalid key, etc.) — don't try fallbacks
+      console.error('Transcription failed:', error);
+      return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { requestId });
     }
-  } catch (error) {
-    console.error('Transcription failed:', error);
-    return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { requestId });
+  }
+
+  // All providers in the chain failed
+  if (!result!) {
+    console.error('All providers exhausted:', lastError);
+    return errorResponse(429, 'All providers unavailable', 'All transcription providers are currently rate-limited. Please try again shortly.', { requestId });
   }
   console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms STT complete`);
 
+  const actualProvider = PROVIDER_NAMES[result.source as Provider] || PROVIDER_NAMES[provider];
   const providerName = fallbackFrom
-    ? `${PROVIDER_NAMES['deepgram']} (fallback from ${fallbackFrom})`
-    : PROVIDER_NAMES[provider];
+    ? `${actualProvider} (fallback from ${PROVIDER_NAMES[fallbackFrom]})`
+    : actualProvider;
 
   const noSpeech = result.source === 'no_speech';
   const creditsUsed = noSpeech ? 0 : creditsForCost(result.costUsd);

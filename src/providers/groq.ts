@@ -2,18 +2,8 @@
 // Fastest and cheapest STT - $0.00185/min using whisper-large-v3
 
 import { computeGroqTranscriptionCost } from '../lib/cost-calculator';
+import { ProviderUnavailableError } from './types';
 import type { TranscriptionResult } from './types';
-
-/**
- * Custom error for Groq edge blocking (403 Forbidden)
- * Triggers fallback to Deepgram
- */
-export class GroqEdgeBlockedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'GroqEdgeBlockedError';
-  }
-}
 
 /**
  * Get file extension from content type
@@ -71,7 +61,7 @@ export async function transcribeWithGroq(
 
   // Handle 403 Forbidden - Groq sometimes blocks edge regions
   if (response.status === 403) {
-    throw new GroqEdgeBlockedError('Groq returned 403 Forbidden - likely edge region blocked');
+    throw new ProviderUnavailableError('Groq', '403 Forbidden - likely edge region blocked');
   }
 
   if (!response.ok) {
@@ -82,7 +72,7 @@ export async function transcribeWithGroq(
       throw new Error('Groq API key is invalid');
     }
     if (response.status === 429) {
-      throw new Error('Groq rate limit exceeded');
+      throw new ProviderUnavailableError('Groq', 'rate limit exceeded');
     }
 
     throw new Error(`Groq error: ${response.status}`);
