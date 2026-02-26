@@ -33,7 +33,7 @@ const PROVIDER_NAMES: Record<Provider, string> = {
 // Fallback chains: each provider cascades through alternatives
 // ElevenLabs (most expensive) is last resort for the cheaper providers
 const FALLBACK_CHAINS: Record<Provider, Provider[]> = {
-  elevenlabs: ['elevenlabs', 'groq', 'deepgram'],
+  elevenlabs: ['elevenlabs', 'deepgram', 'groq'],
   groq: ['groq', 'deepgram', 'elevenlabs'],
   deepgram: ['deepgram', 'groq', 'elevenlabs'],
 };
