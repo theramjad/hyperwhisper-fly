@@ -5,7 +5,7 @@
 import type { Context } from 'hono';
 import { transcribeWithDeepgram } from '../providers/deepgram';
 import { transcribeWithGroq, GroqEdgeBlockedError } from '../providers/groq';
-import { transcribeWithElevenLabs } from '../providers/elevenlabs';
+import { transcribeWithElevenLabs, ElevenLabsRateLimitError } from '../providers/elevenlabs';
 import type { TranscriptionResult } from '../providers/types';
 import { creditsForCost, formatUsd } from '../lib/cost-calculator';
 import { generateRequestId } from '../lib/request-id';
@@ -134,7 +134,17 @@ export async function transcribeRoute(c: Context) {
         }
       }
     } else if (provider === 'elevenlabs') {
-      result = await transcribeWithElevenLabs(audioBuffer, contentType, language, initialPrompt);
+      try {
+        result = await transcribeWithElevenLabs(audioBuffer, contentType, language, initialPrompt);
+      } catch (error) {
+        if (error instanceof ElevenLabsRateLimitError) {
+          console.warn('ElevenLabs 429 - falling back to Deepgram');
+          result = await transcribeWithDeepgram(audioBuffer, contentType, language, initialPrompt);
+          fallbackFrom = 'elevenlabs';
+        } else {
+          throw error;
+        }
+      }
     } else {
       result = await transcribeWithDeepgram(audioBuffer, contentType, language, initialPrompt);
     }

@@ -4,6 +4,13 @@
 import { computeElevenLabsTranscriptionCost } from '../lib/cost-calculator';
 import type { TranscriptionResult } from './types';
 
+export class ElevenLabsRateLimitError extends Error {
+  constructor() {
+    super('ElevenLabs rate limit exceeded');
+    this.name = 'ElevenLabsRateLimitError';
+  }
+}
+
 /**
  * Transcribe audio with ElevenLabs Scribe v2
  */
@@ -54,7 +61,7 @@ export async function transcribeWithElevenLabs(
       throw new Error('ElevenLabs API key is invalid');
     }
     if (response.status === 429) {
-      throw new Error('ElevenLabs rate limit exceeded');
+      throw new ElevenLabsRateLimitError();
     }
 
     throw new Error(`ElevenLabs error: ${response.status}`);
