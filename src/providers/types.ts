@@ -9,6 +9,11 @@ export interface TranscriptionResult {
   requestId?: string;
 }
 
+export interface ProviderRequestContext {
+  requestId?: string;
+  attempt?: number;
+}
+
 /**
  * Thrown when a provider is temporarily unavailable (429, 403 edge block, etc.)
  * Signals the fallback chain to try the next provider.

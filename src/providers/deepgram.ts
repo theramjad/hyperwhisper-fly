@@ -3,7 +3,8 @@
 
 import { computeDeepgramTranscriptionCost } from '../lib/cost-calculator';
 import { ProviderUnavailableError } from './types';
-import type { TranscriptionResult } from './types';
+import type { ProviderRequestContext, TranscriptionResult } from './types';
+import { fetchWithTimeout, logProviderEvent, readErrorBodyPreview } from './utils';
 
 // Maximum keywords Deepgram accepts
 const MAX_KEYWORDS = 100;
@@ -56,8 +57,10 @@ export async function transcribeWithDeepgram(
   audio: ArrayBuffer,
   contentType: string,
   language?: string,
-  initialPrompt?: string
+  initialPrompt?: string,
+  context: ProviderRequestContext = {},
 ): Promise<TranscriptionResult> {
+  const startedAt = performance.now();
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
     throw new Error('DEEPGRAM_API_KEY not configured');
@@ -65,21 +68,35 @@ export async function transcribeWithDeepgram(
 
   const keyterms = initialPrompt ? convertToKeyterms(initialPrompt) : '';
   const url = buildDeepgramUrl(language, keyterms);
+  const provider = 'deepgram';
 
-  console.log(`Deepgram request: ${audio.byteLength} bytes, language=${language || 'auto'}, keyterms=${keyterms.split(',').length}`);
+  logProviderEvent(provider, 'prepare', {
+    audioBytes: audio.byteLength,
+    contentType,
+    language: language || 'auto',
+    keytermCount: keyterms ? keyterms.split(',').length : 0,
+  }, context);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(provider, url, {
     method: 'POST',
     headers: {
       'Authorization': `Token ${apiKey}`,
       'Content-Type': contentType,
     },
     body: audio,
-  });
+  }, context);
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Deepgram error ${response.status}: ${errorText}`);
+    const errorText = await readErrorBodyPreview(response);
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    const kind = response.status >= 500 ? 'upstream_5xx' : response.status === 429 ? 'rate_limit' : 'http_error';
+
+    logProviderEvent(provider, 'http_error', {
+      elapsedMs,
+      status: response.status,
+      kind,
+      bodyPreview: errorText,
+    }, context);
 
     if (response.status === 401) {
       throw new Error('Deepgram API key is invalid or expired');
@@ -89,6 +106,9 @@ export async function transcribeWithDeepgram(
     }
     if (response.status === 429) {
       throw new ProviderUnavailableError('Deepgram', 'rate limit exceeded');
+    }
+    if (response.status >= 500) {
+      throw new ProviderUnavailableError('Deepgram', `upstream 5xx: ${response.status}`);
     }
 
     throw new Error(`Deepgram error: ${response.status}`);
@@ -112,7 +132,10 @@ export async function transcribeWithDeepgram(
   const duration = data.metadata?.duration || 0;
 
   if (!transcript || transcript.trim().length === 0) {
-    console.log('Deepgram returned no speech');
+    logProviderEvent(provider, 'no_speech', {
+      elapsedMs: Math.round(performance.now() - startedAt),
+      detectedLanguage: channel?.detected_language,
+    }, context);
     return {
       text: '',
       language: channel?.detected_language,
@@ -123,7 +146,12 @@ export async function transcribeWithDeepgram(
     };
   }
 
-  console.log(`Deepgram success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${channel?.detected_language}`);
+  logProviderEvent(provider, 'success', {
+    elapsedMs: Math.round(performance.now() - startedAt),
+    transcriptChars: transcript.length,
+    durationSeconds: duration,
+    detectedLanguage: channel?.detected_language,
+  }, context);
 
   return {
     text: transcript,

@@ -3,7 +3,8 @@
 
 import { computeElevenLabsTranscriptionCost } from '../lib/cost-calculator';
 import { ProviderUnavailableError } from './types';
-import type { TranscriptionResult } from './types';
+import type { ProviderRequestContext, TranscriptionResult } from './types';
+import { fetchWithTimeout, logProviderEvent, readErrorBodyPreview } from './utils';
 
 /**
  * Transcribe audio with ElevenLabs Scribe v2
@@ -12,8 +13,11 @@ export async function transcribeWithElevenLabs(
   audio: ArrayBuffer,
   contentType: string,
   language?: string,
-  _initialPrompt?: string  // ElevenLabs doesn't support prompt
+  _initialPrompt?: string,  // ElevenLabs doesn't support prompt
+  context: ProviderRequestContext = {},
 ): Promise<TranscriptionResult> {
+  const startTime = performance.now();
+  const provider = 'elevenlabs';
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     throw new Error('ELEVENLABS_API_KEY not configured');
@@ -37,25 +41,40 @@ export async function transcribeWithElevenLabs(
     formData.append('language_code', language.toLowerCase());
   }
 
-  console.log(`ElevenLabs request: ${audio.byteLength} bytes, language=${language || 'auto'}`);
+  logProviderEvent(provider, 'prepare', {
+    audioBytes: audio.byteLength,
+    contentType,
+    language: language || 'auto',
+  }, context);
 
-  const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+  const response = await fetchWithTimeout(provider, 'https://api.elevenlabs.io/v1/speech-to-text', {
     method: 'POST',
     headers: {
       'xi-api-key': apiKey,
     },
     body: formData,
-  });
+  }, context);
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`ElevenLabs error ${response.status}: ${errorText}`);
+    const errorText = await readErrorBodyPreview(response);
+    const elapsedMs = Math.round(performance.now() - startTime);
+    const kind = response.status >= 500 ? 'upstream_5xx' : response.status === 429 ? 'rate_limit' : 'http_error';
+
+    logProviderEvent(provider, 'http_error', {
+      elapsedMs,
+      status: response.status,
+      kind,
+      bodyPreview: errorText,
+    }, context);
 
     if (response.status === 401) {
       throw new Error('ElevenLabs API key is invalid');
     }
     if (response.status === 429) {
       throw new ProviderUnavailableError('ElevenLabs', 'rate limit exceeded');
+    }
+    if (response.status >= 500) {
+      throw new ProviderUnavailableError('ElevenLabs', `upstream 5xx: ${response.status}`);
     }
 
     throw new Error(`ElevenLabs error: ${response.status}`);
@@ -78,7 +97,10 @@ export async function transcribeWithElevenLabs(
   const transcript = data.text || '';
 
   if (!transcript || transcript.trim().length === 0) {
-    console.log('ElevenLabs returned no speech');
+    logProviderEvent(provider, 'no_speech', {
+      elapsedMs: Math.round(performance.now() - startTime),
+      language: data.language_code,
+    }, context);
     return {
       text: '',
       language: data.language_code,
@@ -88,7 +110,12 @@ export async function transcribeWithElevenLabs(
     };
   }
 
-  console.log(`ElevenLabs success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language_code}`);
+  logProviderEvent(provider, 'success', {
+    elapsedMs: Math.round(performance.now() - startTime),
+    transcriptChars: transcript.length,
+    durationSeconds: duration,
+    language: data.language_code,
+  }, context);
 
   return {
     text: transcript,

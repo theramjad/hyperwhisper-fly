@@ -38,7 +38,13 @@ const FALLBACK_CHAINS: Record<Provider, Provider[]> = {
   deepgram: ['deepgram', 'groq', 'elevenlabs'],
 };
 
-const PROVIDER_FN: Record<Provider, (audio: ArrayBuffer, contentType: string, language?: string, initialPrompt?: string) => Promise<TranscriptionResult>> = {
+const PROVIDER_FN: Record<Provider, (
+  audio: ArrayBuffer,
+  contentType: string,
+  language?: string,
+  initialPrompt?: string,
+  context?: { requestId?: string; attempt?: number }
+) => Promise<TranscriptionResult>> = {
   deepgram: transcribeWithDeepgram,
   groq: transcribeWithGroq,
   elevenlabs: transcribeWithElevenLabs,
@@ -61,6 +67,26 @@ function extractProvider(c: Context): Provider {
   }
 
   return 'deepgram';
+}
+
+function getFlyRequestId(c: Context): string | undefined {
+  return c.req.header('Fly-Request-Id')
+    || c.req.header('Fly-Request-ID')
+    || c.req.header('fly-request-id')
+    || undefined;
+}
+
+function logTranscribeEvent(
+  requestId: string,
+  startTime: number,
+  event: string,
+  details: Record<string, unknown> = {},
+) {
+  console.log(`transcribe.${event}`, {
+    requestId,
+    elapsedMs: Math.round(performance.now() - startTime),
+    ...details,
+  });
 }
 
 function validateStreamingHeaders(c: Context):
@@ -92,19 +118,44 @@ export async function transcribeRoute(c: Context) {
   const requestId = generateRequestId();
   const startTime = performance.now();
   const clientIP = getClientIP(c);
+  const flyRequestId = getFlyRequestId(c);
 
   // IP block check
   if (await isIPBlocked(clientIP)) {
+    logTranscribeEvent(requestId, startTime, 'request_rejected', {
+      reason: 'ip_blocked',
+      flyRequestId,
+    });
     return errorResponse(403, 'Access denied', 'Your IP has been temporarily blocked due to abuse');
   }
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms IP check`);
+  logTranscribeEvent(requestId, startTime, 'ip_check_done', { flyRequestId });
 
   const headerValidation = validateStreamingHeaders(c);
   if (!headerValidation.ok) {
+    logTranscribeEvent(requestId, startTime, 'request_rejected', {
+      reason: 'invalid_streaming_headers',
+      flyRequestId,
+      status: headerValidation.response.status,
+    });
     return headerValidation.response;
   }
 
   const { contentType, contentLength } = headerValidation;
+  const provider = extractProvider(c);
+  const language = c.req.query('language') || undefined;
+  const initialPrompt = c.req.query('initial_prompt') || undefined;
+  const mode = c.req.query('mode') || undefined;
+
+  logTranscribeEvent(requestId, startTime, 'request_start', {
+    flyRequestId,
+    flyRegion: process.env.FLY_REGION || 'local',
+    provider,
+    contentType,
+    contentLength,
+    language: language || 'auto',
+    hasInitialPrompt: Boolean(initialPrompt),
+    mode: mode || 'default',
+  });
 
   // Auth (query params only)
   const authResult = await validateAuth({
@@ -112,58 +163,100 @@ export async function transcribeRoute(c: Context) {
     deviceId: c.req.query('device_id') || undefined,
   });
   if (!authResult.ok) {
+    logTranscribeEvent(requestId, startTime, 'request_rejected', {
+      reason: 'auth_failed',
+      flyRequestId,
+      status: authResult.response.status,
+    });
     return authResult.response;
   }
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms auth`);
+  logTranscribeEvent(requestId, startTime, 'auth_done');
 
   const estimatedCredits = estimateCreditsFromSize(contentLength);
   const creditCheck = await validateCredits(authResult.value, estimatedCredits, clientIP);
   if (!creditCheck.ok) {
+    logTranscribeEvent(requestId, startTime, 'request_rejected', {
+      reason: 'credits_failed',
+      flyRequestId,
+      status: creditCheck.response.status,
+      estimatedCredits,
+    });
     return creditCheck.response;
   }
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms credits`);
-
-  const provider = extractProvider(c);
-  const language = c.req.query('language') || undefined;
-  const initialPrompt = c.req.query('initial_prompt') || undefined;
-  const mode = c.req.query('mode') || undefined;
+  logTranscribeEvent(requestId, startTime, 'credits_done', { estimatedCredits });
 
   const audioBuffer = await c.req.arrayBuffer();
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms buffer read`);
-  console.log(`Transcribe request: provider=${provider}, size=${audioBuffer.byteLength}, type=${contentType}`);
+  logTranscribeEvent(requestId, startTime, 'buffer_read_done', {
+    audioBytes: audioBuffer.byteLength,
+  });
 
-  let result: TranscriptionResult;
+  let result: TranscriptionResult | undefined;
   let fallbackFrom: Provider | undefined;
+  let fallbackCount = 0;
 
   const chain = FALLBACK_CHAINS[provider];
   let lastError: Error | undefined;
 
-  for (const current of chain) {
+  for (const [index, current] of chain.entries()) {
+    logTranscribeEvent(requestId, startTime, 'provider_attempt_start', {
+      provider: current,
+      attempt: index + 1,
+    });
+
     try {
-      result = await PROVIDER_FN[current](audioBuffer, contentType, language, initialPrompt);
+      result = await PROVIDER_FN[current](audioBuffer, contentType, language, initialPrompt, {
+        requestId,
+        attempt: index + 1,
+      });
       if (current !== provider) {
         fallbackFrom = provider;
       }
+      logTranscribeEvent(requestId, startTime, 'provider_attempt_done', {
+        provider: current,
+        attempt: index + 1,
+        upstreamRequestId: result.requestId,
+        transcriptChars: result.text.length,
+        resultSource: result.source,
+      });
       break;
     } catch (error) {
       if (error instanceof ProviderUnavailableError) {
         const next = chain[chain.indexOf(current) + 1];
-        console.warn(`${error.message} - ${next ? `falling back to ${next}` : 'no more fallbacks'}`);
+        fallbackCount += 1;
+        logTranscribeEvent(requestId, startTime, 'provider_attempt_fail', {
+          provider: current,
+          attempt: index + 1,
+          kind: 'provider_unavailable',
+          message: error.message,
+          nextProvider: next,
+        });
         lastError = error;
         continue;
       }
       // Non-retryable error (401 invalid key, etc.) — don't try fallbacks
-      console.error('Transcription failed:', error);
+      logTranscribeEvent(requestId, startTime, 'request_fail', {
+        provider: current,
+        attempt: index + 1,
+        kind: 'non_retryable',
+        message: error instanceof Error ? error.message : String(error),
+      });
       return errorResponse(500, 'Transcription failed', error instanceof Error ? error.message : String(error), { requestId });
     }
   }
 
   // All providers in the chain failed
-  if (!result!) {
-    console.error('All providers exhausted:', lastError);
+  if (!result) {
+    logTranscribeEvent(requestId, startTime, 'request_fail', {
+      kind: 'all_providers_unavailable',
+      fallbackCount,
+      message: lastError?.message,
+    });
     return errorResponse(429, 'All providers unavailable', 'All transcription providers are currently rate-limited. Please try again shortly.', { requestId });
   }
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms STT complete`);
+  logTranscribeEvent(requestId, startTime, 'stt_done', {
+    provider: result.source,
+    upstreamRequestId: result.requestId,
+  });
 
   const actualProvider = PROVIDER_NAMES[result.source as Provider] || PROVIDER_NAMES[provider];
   const providerName = fallbackFrom
@@ -209,6 +302,11 @@ export async function transcribeRoute(c: Context) {
   c.header('X-Total-Cost-Usd', formatUsd(result.costUsd));
   c.header('X-Credits-Used', creditsUsed.toFixed(1));
 
-  console.log(`[${requestId}] +${(performance.now() - startTime).toFixed(0)}ms total`);
+  logTranscribeEvent(requestId, startTime, 'request_done', {
+    finalProvider: providerName,
+    fallbackCount,
+    noSpeech,
+    creditsUsed,
+  });
   return c.json(response);
 }

@@ -3,7 +3,8 @@
 
 import { computeGroqTranscriptionCost } from '../lib/cost-calculator';
 import { ProviderUnavailableError } from './types';
-import type { TranscriptionResult } from './types';
+import type { ProviderRequestContext, TranscriptionResult } from './types';
+import { fetchWithTimeout, logProviderEvent, readErrorBodyPreview } from './utils';
 
 /**
  * Get file extension from content type
@@ -25,9 +26,11 @@ export async function transcribeWithGroq(
   audio: ArrayBuffer,
   contentType: string,
   language?: string,
-  initialPrompt?: string
+  initialPrompt?: string,
+  context: ProviderRequestContext = {},
 ): Promise<TranscriptionResult> {
   const startTime = performance.now();
+  const provider = 'groq';
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error('GROQ_API_KEY not configured');
@@ -48,31 +51,51 @@ export async function transcribeWithGroq(
   }
 
   const formDataMs = performance.now() - startTime;
-  console.log(`Groq request: ${audio.byteLength} bytes, language=${language || 'auto'}`);
+  logProviderEvent(provider, 'prepare', {
+    audioBytes: audio.byteLength,
+    contentType,
+    language: language || 'auto',
+    formDataMs: Math.round(formDataMs),
+  }, context);
 
-  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+  const response = await fetchWithTimeout(provider, 'https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
     },
     body: formData,
-  });
+  }, context);
   const fetchMs = performance.now() - startTime;
 
   // Handle 403 Forbidden - Groq sometimes blocks edge regions
   if (response.status === 403) {
+    logProviderEvent(provider, 'http_error', {
+      elapsedMs: Math.round(fetchMs),
+      status: response.status,
+      kind: 'edge_block',
+    }, context);
     throw new ProviderUnavailableError('Groq', '403 Forbidden - likely edge region blocked');
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Groq error ${response.status}: ${errorText}`);
+    const errorText = await readErrorBodyPreview(response);
+    const kind = response.status >= 500 ? 'upstream_5xx' : response.status === 429 ? 'rate_limit' : 'http_error';
+
+    logProviderEvent(provider, 'http_error', {
+      elapsedMs: Math.round(fetchMs),
+      status: response.status,
+      kind,
+      bodyPreview: errorText,
+    }, context);
 
     if (response.status === 401) {
       throw new Error('Groq API key is invalid');
     }
     if (response.status === 429) {
       throw new ProviderUnavailableError('Groq', 'rate limit exceeded');
+    }
+    if (response.status >= 500) {
+      throw new ProviderUnavailableError('Groq', `upstream 5xx: ${response.status}`);
     }
 
     throw new Error(`Groq error: ${response.status}`);
@@ -89,7 +112,10 @@ export async function transcribeWithGroq(
   const transcript = data.text || '';
 
   if (!transcript || transcript.trim().length === 0) {
-    console.log('Groq returned no speech');
+    logProviderEvent(provider, 'no_speech', {
+      elapsedMs: Math.round(performance.now() - startTime),
+      language: data.language,
+    }, context);
     return {
       text: '',
       language: data.language,
@@ -99,7 +125,14 @@ export async function transcribeWithGroq(
     };
   }
 
-  console.log(`Groq success: ${transcript.length} chars, ${duration.toFixed(2)}s, lang=${data.language}, formData=${formDataMs.toFixed(0)}ms, fetch=${fetchMs.toFixed(0)}ms`);
+  logProviderEvent(provider, 'success', {
+    elapsedMs: Math.round(performance.now() - startTime),
+    transcriptChars: transcript.length,
+    durationSeconds: duration,
+    language: data.language,
+    formDataMs: Math.round(formDataMs),
+    fetchMs: Math.round(fetchMs),
+  }, context);
 
   return {
     text: transcript,
