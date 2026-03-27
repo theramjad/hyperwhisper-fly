@@ -105,7 +105,7 @@ export async function postProcessRoute(c: Context) {
   logEvent(requestId, startTime, 'post_process.llm_attempt_start', { provider, attempt: 1 });
 
   try {
-    const primaryRetries = provider === 'cerebras' ? 0 : 3;
+    const primaryRetries = provider === 'anthropic' ? 2 : (provider === 'cerebras' ? 0 : 3);
     llmResponse = await callWithRetry(provider, payload, requestId, primaryRetries);
   } catch (error) {
     logEvent(requestId, startTime, 'post_process.llm_attempt_fail', {
@@ -115,7 +115,7 @@ export async function postProcessRoute(c: Context) {
     });
 
     if (shouldFallback(error)) {
-      providerUsed = provider === 'cerebras' ? 'groq' : 'cerebras';
+      providerUsed = provider === 'anthropic' ? 'cerebras' : (provider === 'cerebras' ? 'groq' : 'cerebras');
       const fallbackRetries = providerUsed === 'groq' ? 3 : 0;
 
       logEvent(requestId, startTime, 'post_process.llm_fallback_start', { provider: providerUsed });
@@ -156,7 +156,7 @@ export async function postProcessRoute(c: Context) {
       outputChars: correctedText.length,
     });
 
-    const alternateProvider: LLMProvider = providerUsed === 'cerebras' ? 'groq' : 'cerebras';
+    const alternateProvider: LLMProvider = providerUsed === 'anthropic' ? 'cerebras' : (providerUsed === 'cerebras' ? 'groq' : 'cerebras');
     const alternateRetries = alternateProvider === 'groq' ? 3 : 0;
 
     logEvent(requestId, startTime, 'post_process.llm_leakage_retry_start', { provider: alternateProvider });

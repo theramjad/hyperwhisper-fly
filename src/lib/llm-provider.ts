@@ -4,14 +4,16 @@ import { retryWithBackoff } from './utils';
 import type { CorrectionRequestPayload } from '../providers/groq-llm';
 import { requestCerebrasChat } from '../providers/cerebras';
 import { requestGroqChat } from '../providers/groq-llm';
+import { requestAnthropicChat } from '../providers/anthropic';
 
-export type LLMProvider = 'cerebras' | 'groq';
+export type LLMProvider = 'cerebras' | 'groq' | 'anthropic';
 
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'cerebras';
 
 export const LLM_PROVIDER_NAMES: Record<LLMProvider, string> = {
   cerebras: 'cerebras-gpt-oss-120b',
   groq: 'groq-gpt-oss-120b',
+  anthropic: 'claude-haiku-4-5',
 };
 
 /**
@@ -27,6 +29,9 @@ export function extractLLMProvider(request: Request): LLMProvider {
   if (header === 'cerebras') {
     return 'cerebras';
   }
+  if (header === 'anthropic') {
+    return 'anthropic';
+  }
 
   return DEFAULT_LLM_PROVIDER;
 }
@@ -41,9 +46,12 @@ export async function callWithRetry(
   maxRetries: number
 ): Promise<Awaited<ReturnType<typeof requestCerebrasChat>>> {
   return retryWithBackoff(
-    () => provider === 'cerebras'
-      ? requestCerebrasChat(payload, requestId)
-      : requestGroqChat(payload, requestId),
+    () => {
+      if (provider === 'anthropic') return requestAnthropicChat(payload, requestId);
+      return provider === 'cerebras'
+        ? requestCerebrasChat(payload, requestId)
+        : requestGroqChat(payload, requestId);
+    },
     {
       maxRetries,
       initialDelayMs: 1000,

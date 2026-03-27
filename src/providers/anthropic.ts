@@ -1,7 +1,8 @@
 // ANTHROPIC VISION LLM CLIENT (MESSAGES API, STREAMING)
 // Used by the /assistant endpoint for screen-aware AI responses.
 
-import { computeAnthropicCost } from '../lib/cost-calculator';
+import { computeAnthropicCost, type GroqUsage } from '../lib/cost-calculator';
+import type { CorrectionRequestPayload } from './groq-llm';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
@@ -26,6 +27,67 @@ export interface AnthropicMessage {
 export interface AnthropicStreamResult {
   stream: ReadableStream<Uint8Array>;
   costPromise: Promise<number>;
+}
+
+/**
+ * Calls the Anthropic Messages API without streaming.
+ * Used for post-processing text correction via the /post-process endpoint.
+ * Returns shape matching Cerebras/Groq: { raw, usage, costUsd }
+ */
+export async function requestAnthropicChat(
+  payload: CorrectionRequestPayload,
+  requestId: string
+): Promise<{ raw: unknown; usage?: GroqUsage; costUsd: number }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+
+  // Convert OpenAI chat format to Anthropic format:
+  // messages[0] = system prompt, messages[1] = user message
+  const systemContent = (payload.messages[0]?.content || '')
+    + '\n\nIMPORTANT: Output ONLY the corrected text. Do not add markdown headers, labels, or any wrapper around the text.';
+  const userContent = payload.messages[1]?.content || '';
+
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemContent,
+      messages: [{ role: 'user', content: userContent }],
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    const error = new Error(`Anthropic API error: ${response.status} ${errorText.slice(0, 500)}`);
+    (error as any).status = response.status;
+    throw error;
+  }
+
+  const data = await response.json() as {
+    content: Array<{ type: string; text?: string }>;
+    usage: { input_tokens: number; output_tokens: number };
+  };
+
+  const inputTokens = data.usage?.input_tokens || 0;
+  const outputTokens = data.usage?.output_tokens || 0;
+  const costUsd = computeAnthropicCost(inputTokens, outputTokens);
+
+  console.log(`[${requestId}] Anthropic usage: input=${inputTokens}, output=${outputTokens}, cost=$${costUsd.toFixed(6)}`);
+
+  return {
+    raw: data,
+    usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens },
+    costUsd,
+  };
 }
 
 /**
