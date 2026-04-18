@@ -31,6 +31,13 @@ app.get('/health', (c) => {
   });
 });
 
+// Warmup endpoint - clients hit this on hotkey-down to pre-establish
+// the TLS/HTTP2 connection before the /transcribe POST.
+app.get('/warmup', (c) => {
+  c.header('Cache-Control', 'no-store');
+  return c.body(null, 204);
+});
+
 // Main transcription endpoint
 app.post('/transcribe', transcribeRoute);
 
