@@ -15,7 +15,6 @@ cd backend-v2-flyio && fly deploy --config fly.prod.toml
 - @references/custom-vocab.md - Use this when dealing with Deepgram custom vocabulary.
 - Frontend Clients:
 - - MacOS: `HyperWhisperCloudProvider.swift` → `buildInitialTranscriptionPrompt()`
-- - Windows: 
 
 # Deployment Environments
 
