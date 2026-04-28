@@ -79,6 +79,7 @@ function buildDeepgramUrl(language?: string, vocabulary?: string): string {
     encoding: 'linear16',
     sample_rate: '16000',
     channels: '1',
+    mip_opt_out: 'true',
   });
 
   if (language && language !== 'auto') {

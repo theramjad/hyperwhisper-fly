@@ -32,6 +32,7 @@ function buildDeepgramUrl(language?: string, vocabularyTerms?: string): string {
     model: 'nova-3',
     smart_format: 'true',
     utterances: 'true',
+    mip_opt_out: 'true',
   });
 
   const isMonolingual = language && language.toLowerCase() !== 'auto';
