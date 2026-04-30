@@ -1,4 +1,4 @@
-export type TranscriptionSource = 'deepgram' | 'elevenlabs' | 'groq' | 'no_speech';
+export type TranscriptionSource = 'deepgram' | 'elevenlabs' | 'groq' | 'grok' | 'no_speech';
 
 export interface TranscriptionResult {
   text: string;

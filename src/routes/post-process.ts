@@ -16,12 +16,23 @@ import { logEvent } from '../lib/logging';
 const MAX_TEXT_LENGTH = 100000;
 const ESTIMATED_POST_PROCESS_CREDITS = 1.0;
 
-
 interface PostProcessBody {
   text?: string;
   prompt?: string;
   license_key?: string;
   device_id?: string;
+}
+
+function rawResponseLength(raw: unknown): number | undefined {
+  if (typeof raw === 'string') {
+    return raw.length;
+  }
+
+  try {
+    return JSON.stringify(raw).length;
+  } catch {
+    return undefined;
+  }
 }
 
 function getClientIP(c: Context): string {
@@ -105,7 +116,7 @@ export async function postProcessRoute(c: Context) {
   logEvent(requestId, startTime, 'post_process.llm_attempt_start', { provider, attempt: 1 });
 
   try {
-    const primaryRetries = provider === 'anthropic' ? 2 : (provider === 'cerebras' ? 0 : 3);
+    const primaryRetries = provider === 'anthropic' ? 2 : (provider === 'cerebras' ? 0 : (provider === 'grok' ? 1 : 3));
     llmResponse = await callWithRetry(provider, payload, requestId, primaryRetries);
   } catch (error) {
     logEvent(requestId, startTime, 'post_process.llm_attempt_fail', {
@@ -142,7 +153,7 @@ export async function postProcessRoute(c: Context) {
 
   logEvent(requestId, startTime, 'post_process.llm_attempt_done', {
     provider: providerUsed,
-    outputChars: llmResponse.raw.length,
+    outputChars: rawResponseLength(llmResponse.raw),
     costUsd: llmResponse.costUsd,
   });
 

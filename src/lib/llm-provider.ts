@@ -5,8 +5,9 @@ import type { CorrectionRequestPayload } from '../providers/groq-llm';
 import { requestCerebrasChat } from '../providers/cerebras';
 import { requestGroqChat } from '../providers/groq-llm';
 import { requestAnthropicChat } from '../providers/anthropic';
+import { requestXaiGrokChat } from '../providers/xai-llm';
 
-export type LLMProvider = 'cerebras' | 'groq' | 'anthropic';
+export type LLMProvider = 'cerebras' | 'groq' | 'anthropic' | 'grok';
 
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'cerebras';
 
@@ -14,6 +15,7 @@ export const LLM_PROVIDER_NAMES: Record<LLMProvider, string> = {
   cerebras: 'cerebras-gpt-oss-120b',
   groq: 'groq-gpt-oss-120b',
   anthropic: 'claude-haiku-4-5',
+  grok: 'xai-grok-4-1-fast-non-reasoning',
 };
 
 /**
@@ -32,6 +34,9 @@ export function extractLLMProvider(request: Request): LLMProvider {
   if (header === 'anthropic') {
     return 'anthropic';
   }
+  if (header === 'grok') {
+    return 'grok';
+  }
 
   return DEFAULT_LLM_PROVIDER;
 }
@@ -48,6 +53,7 @@ export async function callWithRetry(
   return retryWithBackoff(
     () => {
       if (provider === 'anthropic') return requestAnthropicChat(payload, requestId);
+      if (provider === 'grok') return requestXaiGrokChat(payload, requestId);
       return provider === 'cerebras'
         ? requestCerebrasChat(payload, requestId)
         : requestGroqChat(payload, requestId);

@@ -18,6 +18,9 @@ const DEEPGRAM_COST_PER_AUDIO_MINUTE = 0.0055;
 const GROQ_WHISPER_COST_PER_AUDIO_HOUR = 0.111; // $0.111/hour
 const GROQ_WHISPER_MIN_BILLABLE_SECONDS = 10;
 
+// xAI Grok STT Pricing (USD)
+const XAI_STT_COST_PER_AUDIO_HOUR = 0.10;
+
 // Anthropic Claude Haiku 4.5 Pricing (USD)
 const ANTHROPIC_HAIKU_PROMPT_COST_PER_TOKEN = 1.00 / 1_000_000;
 const ANTHROPIC_HAIKU_COMPLETION_COST_PER_TOKEN = 5.00 / 1_000_000;
@@ -29,6 +32,10 @@ const CEREBRAS_COMPLETION_COST_PER_TOKEN = 0.75 / 1_000_000;
 // Groq GPT-OSS-120B Pricing (USD)
 const GROQ_PROMPT_COST_PER_TOKEN = 0.15 / 1_000_000;
 const GROQ_COMPLETION_COST_PER_TOKEN = 0.60 / 1_000_000;
+
+// xAI Grok 4.1 Fast Pricing (USD)
+const XAI_GROK_FAST_PROMPT_COST_PER_TOKEN = 0.20 / 1_000_000;
+const XAI_GROK_FAST_COMPLETION_COST_PER_TOKEN = 0.50 / 1_000_000;
 
 // Credit model: 1 credit = $0.001
 const USD_PER_CREDIT = 0.001;
@@ -65,6 +72,11 @@ export function computeGroqTranscriptionCost(durationSeconds: number): number {
   return roundUsd(raw);
 }
 
+export function computeXaiTranscriptionCost(durationSeconds: number): number {
+  const raw = (durationSeconds / 3600) * XAI_STT_COST_PER_AUDIO_HOUR;
+  return roundUsd(raw);
+}
+
 // =============================================================================
 // LLM COSTS
 // =============================================================================
@@ -84,6 +96,12 @@ export function computeCerebrasChatCost(usage: GroqUsage): number {
 export function computeGroqChatCost(usage: GroqUsage): number {
   const promptCost = usage.prompt_tokens * GROQ_PROMPT_COST_PER_TOKEN;
   const completionCost = usage.completion_tokens * GROQ_COMPLETION_COST_PER_TOKEN;
+  return roundUsd(promptCost + completionCost);
+}
+
+export function computeXaiGrokFastChatCost(usage: GroqUsage): number {
+  const promptCost = usage.prompt_tokens * XAI_GROK_FAST_PROMPT_COST_PER_TOKEN;
+  const completionCost = usage.completion_tokens * XAI_GROK_FAST_COMPLETION_COST_PER_TOKEN;
   return roundUsd(promptCost + completionCost);
 }
 

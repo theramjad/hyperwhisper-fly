@@ -6,6 +6,7 @@ import type { Context } from 'hono';
 import { transcribeWithDeepgram } from '../providers/deepgram';
 import { transcribeWithGroq } from '../providers/groq';
 import { transcribeWithElevenLabs } from '../providers/elevenlabs';
+import { transcribeWithXaiGrok } from '../providers/xai-stt';
 import type { TranscriptionResult } from '../providers/types';
 import { ProviderUnavailableError } from '../providers/types';
 import { creditsForCost, formatUsd } from '../lib/cost-calculator';
@@ -23,12 +24,13 @@ import { deductCredits, estimateCreditsFromSize, validateCredits } from '../midd
 import { logEvent } from '../lib/logging';
 
 // Supported providers
-export type Provider = 'deepgram' | 'groq' | 'elevenlabs';
+export type Provider = 'deepgram' | 'groq' | 'elevenlabs' | 'grok';
 
 const PROVIDER_NAMES: Record<Provider, string> = {
   deepgram: 'deepgram-nova3',
   elevenlabs: 'elevenlabs-scribe-v2',
   groq: 'groq-whisper-large-v3',
+  grok: 'xai-grok-stt',
 };
 
 // Fallback chains: each provider cascades through alternatives
@@ -37,6 +39,7 @@ const FALLBACK_CHAINS: Record<Provider, Provider[]> = {
   elevenlabs: ['elevenlabs', 'deepgram', 'groq'],
   groq: ['groq', 'deepgram', 'elevenlabs'],
   deepgram: ['deepgram', 'groq', 'elevenlabs'],
+  grok: ['grok', 'deepgram', 'groq', 'elevenlabs'],
 };
 
 const PROVIDER_FN: Record<Provider, (
@@ -49,6 +52,7 @@ const PROVIDER_FN: Record<Provider, (
   deepgram: transcribeWithDeepgram,
   groq: transcribeWithGroq,
   elevenlabs: transcribeWithElevenLabs,
+  grok: transcribeWithXaiGrok,
 };
 
 function getClientIP(c: Context): string {
@@ -59,11 +63,11 @@ function getClientIP(c: Context): string {
 
 function extractProvider(c: Context): Provider {
   const header = c.req.header('X-STT-Provider')?.toLowerCase().trim();
-  if (header === 'deepgram' || header === 'groq' || header === 'elevenlabs') {
+  if (header === 'deepgram' || header === 'groq' || header === 'elevenlabs' || header === 'grok') {
     return header;
   }
 
-  if (header && header !== 'deepgram' && header !== 'groq' && header !== 'elevenlabs') {
+  if (header && header !== 'deepgram' && header !== 'groq' && header !== 'elevenlabs' && header !== 'grok') {
     console.warn('Invalid X-STT-Provider header, using default', { provided: header });
   }
 
